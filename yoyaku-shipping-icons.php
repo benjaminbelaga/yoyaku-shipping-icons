@@ -3,7 +3,7 @@
  * Plugin Name: Yoyaku Shipping Icons
  * Plugin URI:  https://github.com/benjaminbelaga/yoyaku-shipping-icons
  * Description: Injecte automatiquement un logo devant chaque méthode de livraison WooCommerce (Chronopost, Colissimo, Spring GDS, UPS, FedEx).
- * Version:     1.7.0
+ * Version:     1.8.0
  * Author:      Benjamin Belaga
  * Author URI:  https://github.com/benjaminbelaga
  * License:     GPL2+
@@ -91,7 +91,7 @@ function ysl_debug_and_icon( $label, $method ) {
  * ysl_sort_shipping_rates()
  *
  * Trie les méthodes de livraison par prix croissant, garde Pick up en dernier.
- * MODIFICATION: Ne trie QUE si aucune sélection utilisateur n'est active.
+ * v1.8.0: Suppression du check "user selection" qui bloquait le tri initial.
  *
  * @param array $rates Tableau des méthodes de livraison.
  * @return array
@@ -101,63 +101,28 @@ function ysl_sort_shipping_rates( $rates ) {
         return $rates;
     }
 
-    // NOUVEAU: Vérifier s'il y a une sélection utilisateur active
-    $chosen_methods = WC()->session->get( 'chosen_shipping_methods' );
-    $is_user_selection_active = false;
-
-    if ( ! empty( $chosen_methods ) ) {
-        foreach ( $chosen_methods as $chosen_method ) {
-            if ( ! empty( $chosen_method ) && isset( $rates[ $chosen_method ] ) ) {
-                $is_user_selection_active = true;
-                error_log("[SHIPPING SORT] Sélection utilisateur détectée: " . $chosen_method . " - PAS DE TRI");
-                break;
-            }
-        }
-    }
-
-    // Si l'utilisateur a fait une sélection, on ne trie pas
-    if ( $is_user_selection_active ) {
-        return $rates;
-    }
-
-    // DEBUG: Log tous les rates avant tri
-    error_log("[SHIPPING SORT] Aucune sélection utilisateur - tri automatique activé");
-    error_log("[SHIPPING SORT] Avant tri - " . count($rates) . " méthodes:");
-    foreach ( $rates as $id => $rate ) {
-        error_log("[SHIPPING SORT] " . $id . " => " . $rate->label . " (cost: " . $rate->cost . ")");
-    }
-
     $pickup = array();
     $others = array();
 
     foreach ( $rates as $id => $rate ) {
-        // Recherche plus flexible pour "Pick up"
-        $label_lower = strtolower($rate->label);
-        if ( strpos( $label_lower, "pick up" ) !== false || strpos( $label_lower, "pickup" ) !== false || strpos( $label_lower, "retrait" ) !== false ) {
+        // Recherche flexible pour "Pick up" / "Retrait"
+        $label_lower = strtolower( $rate->label );
+        if ( strpos( $label_lower, "pick up" ) !== false ||
+             strpos( $label_lower, "pickup" ) !== false ||
+             strpos( $label_lower, "retrait" ) !== false ) {
             $pickup[ $id ] = $rate;
-            error_log("[SHIPPING SORT] PICKUP trouvé: " . $rate->label);
         } else {
             $others[ $id ] = $rate;
-            error_log("[SHIPPING SORT] AUTRE: " . $rate->label . " (cost: " . $rate->cost . ")");
         }
     }
 
-    // Tri par prix croissant
+    // Tri par prix croissant (cast float pour éviter comparaison string)
     uasort( $others, function( $a, $b ) {
-        return $a->cost <=> $b->cost;
+        return (float) $a->cost <=> (float) $b->cost;
     } );
 
-    // DEBUG: Log le résultat final
-    $result = array_merge( $others, $pickup );
-    error_log("[SHIPPING SORT] Après tri - ordre final:");
-    $i = 1;
-    foreach ( $result as $id => $rate ) {
-        error_log("[SHIPPING SORT] " . $i . ". " . $rate->label . " (cost: " . $rate->cost . ")");
-        $i++;
-    }
-
     // Retourne les méthodes triées + pickup à la fin
-    return $result;
+    return array_merge( $others, $pickup );
 }
 
 // On applique la fonction au rendu des méthodes en panier et checkout (divers hooks)
@@ -166,35 +131,17 @@ add_filter( "woocommerce_checkout_shipping_method_full_label", "ysl_debug_and_ic
 add_filter( "woocommerce_cart_shipping_method_label",          "ysl_debug_and_icon", 10, 2 );
 add_filter( "woocommerce_checkout_shipping_method_label",      "ysl_debug_and_icon", 10, 2 );
 
-// Tri automatique des méthodes de livraison par prix - priorité MAXIMUM
-// MODIFICATION: Réduit la priorité pour permettre aux autres plugins de s'exécuter
-add_filter( "woocommerce_package_rates", "ysl_sort_shipping_rates", 30 );
+// Tri automatique des méthodes de livraison par prix croissant
+// v1.8.0: Priorité 100 pour s'exécuter après les autres plugins shipping
+add_filter( "woocommerce_package_rates", "ysl_sort_shipping_rates", 100 );
 
-// Hook supplémentaire pour forcer le tri au moment du calcul des shipping
-// MODIFICATION: Réduit la priorité et ajoute la même logique de préservation
+// Hook supplémentaire pour forcer le tri au moment du calcul des shipping packages
+// v1.8.0: Simplifié - tri toujours appliqué pour cohérence d'affichage
 add_filter( "woocommerce_cart_shipping_packages", function($packages) {
-    // Vérifier s'il y a une sélection utilisateur active
-    $chosen_methods = WC()->session->get( 'chosen_shipping_methods' );
-    $is_user_selection_active = false;
-
-    if ( ! empty( $chosen_methods ) ) {
-        foreach ( $chosen_methods as $chosen_method ) {
-            if ( ! empty( $chosen_method ) ) {
-                $is_user_selection_active = true;
-                break;
-            }
-        }
-    }
-
-    // Si l'utilisateur a fait une sélection, on ne modifie rien
-    if ( $is_user_selection_active ) {
-        return $packages;
-    }
-
-    foreach ($packages as $package_key => $package) {
-        if (isset($package["rates"])) {
-            $packages[$package_key]["rates"] = ysl_sort_shipping_rates($package["rates"]);
+    foreach ( $packages as $package_key => $package ) {
+        if ( isset( $package["rates"] ) ) {
+            $packages[$package_key]["rates"] = ysl_sort_shipping_rates( $package["rates"] );
         }
     }
     return $packages;
-}, 30 );
+}, 100 );
