@@ -1,0 +1,233 @@
+<?php
+/**
+ * Plugin Name: Yoyaku Shipping Icons
+ * Plugin URI:  https://github.com/benjaminbelaga/yoyaku-shipping-icons
+ * Description: Injecte automatiquement un logo devant chaque méthode de livraison WooCommerce avec délais estimés.  
+ * Version:     1.6.1
+ * Author:      Benjamin Belaga
+ * Author URI:  https://github.com/benjaminbelaga
+ * License:     GPL2+
+ * Text Domain: yoyaku-shipping-icons
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit; // Exit if accessed directly
+}
+
+/**
+ * ysl_debug_and_icon()
+ *
+ * Logge chaque méthode de livraison et injecte un logo adapté devant le label avec délais estimés.
+ *
+ * @param string           $label  Le libellé original rendu par WooCommerce.
+ * @param WC_Shipping_Rate $method L'objet méthode de livraison.
+ * @return string
+ */
+function ysl_debug_and_icon( $label, $method ) {
+    // — DEBUG : journalise chaque appel de méthode
+    error_log( sprintf(
+        "[ShippingMethod] id=%s | method_id=%s | title=%s",
+        $method->id,
+        $method->method_id,
+        $method->method_title
+    ) );
+
+    // — PATTERNS : mot-clé à repérer dans le titre → configuration (image PNG + délais)
+    $patterns = array(
+        'chronopost'            => array(
+            'logo' => 'chronopost-logo.png',
+            'delivery_days' => array(),  // Pas de délais ajoutés - géré par le plugin
+            'label_suffix' => ''
+        ),
+        'colissimo'             => array(
+            'logo' => 'colissimo-logo.png',
+            'delivery_days' => array(),  // Pas de délais ajoutés
+            'label_suffix' => ''
+        ),
+        'delivengo'             => array(
+            'logo' => 'delivengo-logo.png',
+            'delivery_days' => array(4, 10),  // Délais spécifiques pour Delivengo
+            'label_suffix' => ''
+        ),
+        'spring gds'            => array(
+            'logo' => 'spring-gds.png',
+            'delivery_days' => array(6, 12),  // Délais pour Spring GDS
+            'label_suffix' => ''
+        ),
+        'ups worldwide economy' => array(
+            'logo' => 'ups-wwe.png',
+            'delivery_days' => array(),  // Pas de délais - déjà géré par UPS WWE plugin
+            'label_suffix' => ''
+        ),
+        'ups worldwide saver'   => array(
+            'logo' => 'ups-logo.png',
+            'delivery_days' => array(),  // Pas de délais - déjà géré par UPS plugin
+            'label_suffix' => ''
+        ),
+        'ups express'           => array(
+            'logo' => 'ups-logo.png',
+            'delivery_days' => array(),  // Pas de délais - déjà géré par UPS plugin
+            'label_suffix' => ''
+        ),
+        'ups standard'          => array(
+            'logo' => 'ups-logo.png',
+            'delivery_days' => array(),  // Pas de délais - déjà géré par UPS plugin
+            'label_suffix' => ''
+        ),
+        'ups'                   => array(
+            'logo' => 'ups-logo.png',
+            'delivery_days' => array(),  // Pas de délais - déjà géré par UPS plugin
+            'label_suffix' => ''
+        ),
+    );
+
+    // — Normalisation du label : strip_tags, decode entités (dont &nbsp;), unifie tous les blancs, passe en minuscules
+    $haystack = strtolower(
+        preg_replace(
+            '/\s+/u',
+            ' ',
+            html_entity_decode(
+                strip_tags( $label ),
+                ENT_QUOTES,
+                'UTF-8'
+            )
+        )
+    );
+
+    // — DÉTECTION PRÉCISE CORRIGÉE : md_* = DELIVENGO (PAS Spring GDS!)
+    $method_haystack = strtolower($method->method_id);
+    
+    // CORRECTION CRITIQUE: md_* = DELIVENGO (pas Spring GDS!)
+    $is_delivengo_method = (strpos($method_haystack, 'md_') !== false);
+    
+    // Spring GDS = vraie Spring GDS dans le label (pas md_*)
+    $is_spring_gds_method = (strpos($haystack, 'spring gds') !== false ||
+                            strpos($haystack, 'air freight') !== false ||
+                            strpos($haystack, 'postal mailbox') !== false);
+    
+    // MYDELIVINGO = pas de logo (détection par présence 'mydelivingo' dans label)
+    $is_mydelivingo = (strpos($haystack, 'mydelivingo') !== false);
+    
+    // Vraie Delivengo = md_* OU contient 'delivengo' (mais pas MYDELIVINGO)
+    $is_true_delivengo = ($is_delivengo_method || 
+                         (strpos($haystack, 'delivengo') !== false)) && 
+                         !$is_mydelivingo;
+
+    // — Parcours des motifs et injection du logo selon détection précise
+    foreach ( $patterns as $needle => $config ) {
+        $match = false;
+        
+        // MYDELIVINGO = AUCUN LOGO
+        if ($is_mydelivingo) {
+            continue; // Pas de logo pour MYDELIVINGO
+        }
+        
+        // Spring GDS (vraie Spring GDS dans label, PAS md_*)
+        if ($needle === 'spring gds' && $is_spring_gds_method) {
+            $match = true;
+        }
+        // Delivengo (md_* OU autres delivengo non-MYDELIVINGO)
+        elseif ($needle === 'delivengo' && $is_true_delivengo) {
+            $match = true;
+        }
+        // Autres méthodes (UPS, Chronopost, etc.)
+        elseif ($needle !== 'spring gds' && $needle !== 'delivengo') {
+            $match = (strpos( $haystack, $needle ) !== false);
+        }
+        
+        if ($match) {
+            $img_url = plugin_dir_url( __FILE__ ) . 'assets/' . $config['logo'];
+            $icon = sprintf(
+                '<img src="%s" alt="" style="height:50px;margin-right:8px;vertical-align:middle;">',
+                esc_url( $img_url )
+            );
+            
+            // Calculer les dates de livraison (éviter doublons UPS)
+            $delivery_text = '';
+            if (!empty($config['delivery_days'])) {
+                // Conditions spéciales pour délais
+                $should_add_delivery = false;
+                if (($needle === 'spring gds' && $is_spring_gds_method) || 
+                    ($needle === 'delivengo' && $is_true_delivengo)) {
+                    $should_add_delivery = true;
+                }
+                
+                if ($should_add_delivery && strpos($label, 'Est delivery') === false && strpos($label, 'delivery:') === false) {
+                    $delivery_text = ysl_calculate_delivery_dates($config['delivery_days']);
+                }
+            }
+            
+            // Construire le label final
+            $final_label = $icon . $label;
+            if ($delivery_text) {
+                $final_label .= '<br><small>' . $delivery_text . '</small>';
+            }
+            if ($config['label_suffix']) {
+                $final_label .= $config['label_suffix'];
+            }
+            
+            return $final_label;
+        }
+    }
+
+    // Aucun logo trouvé → on renvoie le label sans modification
+    return $label;
+}
+
+/**
+ * Calcule les dates de livraison estimées (format comme UPS PluginHive)
+ *
+ * @param array $delivery_days [min_days, max_days]
+ * @return string
+ */
+function ysl_calculate_delivery_dates($delivery_days) {
+    if (count($delivery_days) < 2) {
+        return '';
+    }
+    
+    $min_days = intval($delivery_days[0]);
+    $max_days = intval($delivery_days[1]);
+    
+    // Calculer les dates en excluant les weekends
+    $start_date = ysl_add_business_days(new DateTime(), $min_days);
+    $end_date = ysl_add_business_days(new DateTime(), $max_days);
+    
+    // Formater les dates comme UPS PluginHive (dd/mm/yyyy)
+    $start_formatted = $start_date->format('d/m/Y');
+    $end_formatted = $end_date->format('d/m/Y');
+    
+    if ($min_days === $max_days) {
+        return sprintf('Est delivery: %s', $start_formatted);
+    } else {
+        return sprintf('Est delivery: between %s and %s', $start_formatted, $end_formatted);
+    }
+}
+
+/**
+ * Ajoute des jours ouvrables à une date (exclut weekends)
+ *
+ * @param DateTime $date
+ * @param int $days
+ * @return DateTime
+ */
+function ysl_add_business_days(DateTime $date, $days) {
+    $result = clone $date;
+    $added_days = 0;
+    
+    while ($added_days < $days) {
+        $result->add(new DateInterval('P1D'));
+        
+        // Si ce n'est pas un weekend (1=Lundi, 7=Dimanche)
+        if ($result->format('N') < 6) {
+            $added_days++;
+        }
+    }
+    
+    return $result;
+}
+
+// On applique la fonction au rendu des méthodes en panier et checkout (divers hooks)
+add_filter( 'woocommerce_cart_shipping_method_full_label',     'ysl_debug_and_icon', 10, 2 );
+add_filter( 'woocommerce_checkout_shipping_method_full_label', 'ysl_debug_and_icon', 10, 2 );
+add_filter( 'woocommerce_cart_shipping_method_label',          'ysl_debug_and_icon', 10, 2 );
+add_filter( 'woocommerce_checkout_shipping_method_label',      'ysl_debug_and_icon', 10, 2 );
