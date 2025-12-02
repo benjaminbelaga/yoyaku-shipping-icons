@@ -1,0 +1,28 @@
+{
+    "name": "benjaminbelaga/yoyaku-shipping-icons",
+    "description": "Yoyaku Shipping Icons - Display shipping method icons in WooCommerce",
+    "type": "wordpress-plugin",
+    "license": "proprietary",
+    "authors": [
+        {
+            "name": "Benjamin Belaga",
+            "email": "ben@yoyaku.fr"
+        }
+    ],
+    "require": {
+        "php": ">=8.1",
+        "composer/installers": "^2.0"
+    },
+    "autoload": {
+        "files": [
+            "yoyaku-shipping-icons.php"
+        ]
+    },
+    "keywords": [
+        "wordpress",
+        "plugin",
+        "woocommerce",
+        "shipping",
+        "yoyaku"
+    ]
+}
