@@ -25,12 +25,12 @@ if ( ! defined( "ABSPATH" ) ) {
  */
 function ysl_debug_and_icon( $label, $method ) {
     // — DEBUG : journalise chaque appel de méthode
-    error_log( sprintf("[ShippingLabel] label='%s' | id=%s", $label, $method->id) );
-    error_log( sprintf(
-        "[ShippingMethod] id=%s | title=%s",
-        $method->id,
-        $method->method_title
-    ) );
+    // error_log( sprintf("[ShippingLabel] label='%s' | id=%s", $label, $method->id) );
+    // error_log( sprintf(
+    //         "[ShippingMethod] id=%s | title=%s",
+    //         $method->id,
+    //         $method->method_title
+    //     ) );
 
     // — PATTERNS : mot-clé à repérer dans le titre → image PNG (hauteur 50px)
     // Note: L'ordre est important - les patterns plus spécifiques doivent être en premier
