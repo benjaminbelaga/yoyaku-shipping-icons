@@ -1,0 +1,48 @@
+# .rsyncignore — excluded from production deployment
+# Used by ~/yoyaku-team-config/tools/01-core/rsync-to-prod.sh (--exclude-from)
+
+# Version control
+.git/
+.github/
+.gitignore
+.gitattributes
+.gitguardian.yaml
+
+# Dev/CI tools
+.editorconfig
+phpcs.xml
+phpstan.neon
+phpunit.xml
+.phpunit.result.cache
+tests/
+
+# Documentation
+README.md
+AGENTS.md
+CLAUDE.md
+CONTRIBUTING.md
+DEPLOYMENT-GUIDE.md
+SECURITY-SETUP.md
+progress.txt
+docs/
+
+# Sync metadata
+.last-sync.json
+.tasks.yml
+.local-dev-files
+.rsyncignore
+
+# macOS root filesystem (accidentally synced)
+Applications/
+Users/
+etc
+home
+tmp
+tmp/
+var
+var/
+.VolumeIcon.icns
+private/
+.nofollow/
+.resolve/
+.vol/
