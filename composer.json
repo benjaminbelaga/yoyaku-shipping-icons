@@ -13,11 +13,6 @@
         "php": ">=8.1",
         "composer/installers": "^2.0"
     },
-    "autoload": {
-        "files": [
-            "yoyaku-shipping-icons.php"
-        ]
-    },
     "keywords": [
         "wordpress",
         "plugin",
