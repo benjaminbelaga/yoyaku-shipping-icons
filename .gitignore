@@ -3,3 +3,8 @@
 .env.production
 .env.staging
 .DS_Store
+
+# production-watch local-only file manifest — regenerated every 5 min by the
+# daemon; tracking it created a self-inflicted drift loop (rewrite→add→checkout).
+# yyd-theme already ignores it. File stays on disk, only untracked.
+.local-dev-files
